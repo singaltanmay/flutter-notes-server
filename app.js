@@ -3,6 +3,7 @@ const express = require('express');
 const path = require('path');
 const cors = require('cors');
 const jwt = require('jsonwebtoken')
+const crypto = require('crypto');
 
 const mongoose = require('mongoose');
 
@@ -175,12 +176,19 @@ async function getUser({query}, res, next) {
 
 async function signInUser(req, res, next) {
     await User.findOne({
-        'username': req.body.username, 'password': req.body.password
+        'username': req.body.username
     }).then(user => {
-        // Create JWT
-        let userId = user._id.toString();
-        const jwToken = jwt.sign({"username": userId}, TOKEN_SECRET, {expiresIn: '1800s'})
-        res.status(200).send(jwToken);
+        // Verify password
+        if (generateSaltedPassword(req.body.password, user.salt) === user.password) {
+            // Create JWT
+            let userId = user._id.toString();
+            const jwToken = jwt.sign({"username": userId}, TOKEN_SECRET, {expiresIn: '1800s'})
+            res.status(200).send(jwToken);
+        } else {
+            console.log("User " + req.body.username + " failed password authentication.")
+            res.sendStatus(403);
+            next(err)
+        }
     }).catch(err => {
         console.log(err)
         next(err)
@@ -188,9 +196,12 @@ async function signInUser(req, res, next) {
 }
 
 function signUpUser(req, res, next) {
+    const salt = saltmine();
+    const saltedPassword = generateSaltedPassword(req.body.password, salt);
     const user = new User({
         username: req.body.username,
-        password: req.body.password,
+        password: saltedPassword,
+        salt: salt,
         securityQuestion: req.body.securityQuestion,
         securityQuestionAnswer: req.body.securityQuestionAnswer
     });
@@ -214,6 +225,18 @@ async function getUserIdByToken(token) {
             return tokenUserId
         } else return null;
     } else return null;
+}
+
+// Returns a random 16 digit string to be used as salt
+function saltmine() {
+    return crypto.randomBytes(8).toString('hex').slice(0, 16);
+};
+
+// Create a salted password
+function generateSaltedPassword(password, salt) {
+    let hmac = crypto.createHmac('sha512', salt);
+    let update = hmac.update(password);
+    return update.digest('hex');
 }
 
 module.exports = app;
