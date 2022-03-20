@@ -11,34 +11,12 @@ env:
   HEROKU_APP_NAME: ${{ 'flutter-notes' }}
 
 jobs:
-
-  check:
-    runs-on: ubuntu-latest
-    outputs:
-      status: ${{ steps.early.conclusion }}
-    steps:
-    - name: Checkout the repository
-      uses: actions/checkout@v2
-      
-    - uses: dorny/paths-filter@v2
-      id: changes
-      with:
-        filters: |
-          src:
-            - 'server/**'
-  
-    - id: early
-      name: Check for any changes in server/ folder
-      run: if [[ ${{steps.changes.outputs.src}} == false ]]; then exit 1 ; fi
-
   build:
-    needs: check
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
 
-    if: needs.check.outputs.status == 'success'
     steps:
     - name: Checkout the repository
       uses: actions/checkout@v2
@@ -59,7 +37,6 @@ jobs:
     - name: Build and push Docker image
       uses: docker/build-push-action@ad44023a93711e3deb337508980b4b5e9bcdc5dc
       with:
-        context: ./server
         push: true
         tags: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
         labels: ${{ steps.meta.outputs.labels }}
@@ -67,13 +44,8 @@ jobs:
 
 # https://enlear.academy/how-to-deploy-a-dockerized-web-app-to-heroku-using-the-github-actions-f16c00b19621
   deploy:
-    needs: check
     runs-on: ubuntu-18.04
-    defaults:
-      run:
-        working-directory: ./server
     steps:
-
     # Clone the repository
     - name: Checkout
       uses: actions/checkout@v2
