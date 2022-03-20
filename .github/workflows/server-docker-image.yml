@@ -1,0 +1,90 @@
+name: Server Docker Image CI
+
+on:
+  push:
+    branches: [ master ]
+    
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+  HEROKU_APP_NAME: ${{ 'flutter-notes' }}
+
+jobs:
+
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.early.conclusion }}
+    steps:
+    - name: Checkout the repository
+      uses: actions/checkout@v2
+      
+    - uses: dorny/paths-filter@v2
+      id: changes
+      with:
+        filters: |
+          src:
+            - 'server/**'
+  
+    - id: early
+      name: Check for any changes in server/ folder
+      run: if [[ ${{steps.changes.outputs.src}} == false ]]; then exit 1 ; fi
+
+  build:
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    if: needs.check.outputs.status == 'success'
+    steps:
+    - name: Checkout the repository
+      uses: actions/checkout@v2
+         
+    - name: Log in to the Container registry
+      uses: docker/login-action@f054a8b539a109f9f41c372932f1ae047eff08c9
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata (tags, labels) for Docker
+      id: meta
+      uses: docker/metadata-action@98669ae865ea3cffbcbaa878cf57c20bbf1c6c38
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@ad44023a93711e3deb337508980b4b5e9bcdc5dc
+      with:
+        context: ./server
+        push: true
+        tags: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+        labels: ${{ steps.meta.outputs.labels }}
+        
+
+# https://enlear.academy/how-to-deploy-a-dockerized-web-app-to-heroku-using-the-github-actions-f16c00b19621
+  deploy:
+    needs: check
+    runs-on: ubuntu-18.04
+    defaults:
+      run:
+        working-directory: ./server
+    steps:
+
+    # Clone the repository
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    # Build Docker image
+    - name: Docker build
+      run: docker login --username=_ --password=$HEROKU_API_KEY registry.heroku.com
+
+    # Push the Docker image to Heroku Container Registry
+    - name: Publish
+      run: |
+        heroku container:push web -a $HEROKU_APP_NAME
+        heroku container:release web -a $HEROKU_APP_NAME
+    
