@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken')
 
 const mongoose = require('mongoose');
 
+// TOOD migrate enivronments variables to a .env file
 const server = '127.0.0.1:27017';
 const database = 'flutter-notes-db';
 const TOKEN_SECRET = 'QKKawsbKW1OgC5FIvcEtjjsnLTkVbFRi7ITxnjId'
