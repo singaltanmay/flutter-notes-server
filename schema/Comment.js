@@ -1,11 +1,14 @@
 const mongoose = require('mongoose');
 
 const commentSchema = new mongoose.Schema({
-body: {type: String, required: true},
- creator: {
-        type: mongoose.Schema.Types.ObjectId, ref: 'creator', required: true
+    cmt: {type: String, required: true},
+    liked: {type: Boolean, default: false},
+    creator: {
+         type: mongoose.Schema.Types.ObjectId, required: -1
     },
-    children: [Schema.Types.Comment]
+    parent_id: {
+          type: mongoose.Schema.Types.ObjectId, required: -1
+    }
 });
 
 module.exports = mongoose.model('Comment', commentSchema);
