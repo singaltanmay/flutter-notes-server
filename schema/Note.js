@@ -9,11 +9,11 @@ const noteSchema = new mongoose.Schema({
     }, creator: {
         type: mongoose.Schema.Types.ObjectId, ref: 'creator', required: true
     }, starred: {
-          type: Boolean, default: false
-    }, votes: {
-          type: Number, default: 0
-    }, comments: {
-          type: Number, default: 0
+        type: Boolean, default: false
+    }, upvoters: [mongoose.Schema.Types.ObjectId],
+    downvoters: [mongoose.Schema.Types.ObjectId],
+    comments: {
+        type: Number, default: 0
     }
 })
 

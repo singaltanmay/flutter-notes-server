@@ -38,7 +38,7 @@ app.set('view engine', 'jade');
 
 app.use(cors())
 app.use(express.json());
-app.use(express.urlencoded({extended: false}));
+app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // HTTP method declarations
@@ -47,6 +47,7 @@ app.get('/note/starred', getStarredNotes)
 app.post('/note', saveNote)
 app.delete('/note', deleteNote)
 app.put('/note', updateNote)
+app.post('/note/:noteId/vote', voteOnNote)
 app.get('/user', getUser)
 app.post('/signup', signUpUser)
 app.post('/signin', signInUser)
@@ -77,7 +78,7 @@ const Note = require('./schema/Note')
 const User = require('./schema/User')
 const Comment = require('./schema/Comment')
 
-async function getNote({query}, res, next) {
+async function getNote({ query }, res, next) {
     // Return all notes if note id is not provided
     if (!query || !(query.noteid)) {
         Note.find().then(notes => {
@@ -99,7 +100,7 @@ async function getNote({query}, res, next) {
 
 async function getStarredNotes(req, res, next) {
     // Return all notes if note id is not provided
-    Note.find({"starred": true}).then(notes => {
+    Note.find({ "starred": true }).then(notes => {
         res.send(notes);
     }).catch(err => {
         console.log(err)
@@ -108,7 +109,7 @@ async function getStarredNotes(req, res, next) {
     })
 }
 
-async function saveNote({query, body}, res, next) {
+async function saveNote({ query, body }, res, next) {
     let creator = await getUserIdByToken(query.token);
     const note = new Note({
         title: body.title, body: body.body, created: body.created, starred: body.starred
@@ -125,11 +126,11 @@ async function saveNote({query, body}, res, next) {
         .then(_ => {
             res.sendStatus(200);
         }).catch(err => {
-        next(err)
-    });
+            next(err)
+        });
 }
 
-async function updateNote({query, body}, res, next) {
+async function updateNote({ query, body }, res, next) {
     const noteId = body._id || query.noteid;
     if (!noteId) {
         res.sendStatus(404)
@@ -141,7 +142,7 @@ async function updateNote({query, body}, res, next) {
         return;
     }
     let userId = await getUserIdByToken(query.token);
-    Note.updateOne({'_id': noteId}, {
+    Note.updateOne({ '_id': noteId }, {
         'title': body.title || oldNote['title'],
         'body': body.body || oldNote['body'],
         'created': body.created || oldNote['created'],
@@ -155,7 +156,7 @@ async function updateNote({query, body}, res, next) {
     })
 }
 
-function deleteNote({query}, res, next) {
+function deleteNote({ query }, res, next) {
     // Delete all notes if note id is not provided
     if (!query || !(query.noteid)) {
         Note.deleteMany().then(res.sendStatus(200)).catch(err => {
@@ -164,11 +165,73 @@ function deleteNote({query}, res, next) {
             next(err)
         })
     } else {
-        Note.deleteOne({'_id': query.noteid}).then(res.sendStatus(200)).catch(next)
+        Note.deleteOne({ '_id': query.noteid }).then(res.sendStatus(200)).catch(next)
     }
 }
 
-async function getUser({query}, res, next) {
+async function voteOnNote({ params, query }, res, next) {
+    // Request did not contain any vote value or did not specify the note ID
+    if (!query || !(query.vote) || !params || !(params.noteId)) {
+        res.status(400).send('Note ID and Vote value should be provided!');
+        return;
+    }
+    let userId = await getUserIdByToken(query.token);
+    let note = await Note.findById(params.noteId);
+    if (!note) {
+        res.status(404).send('Note with note ID ' + params.noteId + ' not found.');
+        return;
+    }
+    if (query.vote == -1) {
+        // Case: Downvote
+        // Remove any upvote by this user
+        note.upvoters = note.upvoters.filter((value) => value != userId);
+        // Add the downvote
+        note.downvoters = note.downvoters.push(userId);
+        Note.updateOne({ '_id': note._id }, {
+            'upvoters': note.upvoters,
+            'downvoters': note.downvoters
+        }).then(_ => {
+            res.sendStatus(200);
+        }).catch(err => {
+            console.log(err)
+            next(err)
+        })
+    } else if (query.vote == 0) {
+        // Case: No Vote
+        // Remove any upvote by this user
+        note.upvoters = note.upvoters.filter((value) => value != userId);
+        // Remove any downvote by this user
+        note.downvoters = note.downvoters.filter((value) => value != userId);
+        Note.updateOne({ '_id': note._id }, {
+            'upvoters': note.upvoters,
+            'downvoters': note.downvoters
+        }).then(_ => {
+            res.sendStatus(200);
+        }).catch(err => {
+            console.log(err)
+            next(err)
+        })
+    } else if (query.vote == 1) {
+        // Case: Upvote
+        // Remove any downvote by this user
+        note.downvoters = note.downvoters.filter((value) => value != userId);
+        // Add the upvote
+        note.upvoters = note.upvoters.push(userId);
+        Note.updateOne({ '_id': note._id }, {
+            'upvoters': note.upvoters,
+            'downvoters': note.downvoters
+        }).then(_ => {
+            res.sendStatus(200);
+        }).catch(err => {
+            console.log(err)
+            next(err)
+        })
+    } else {
+        res.status(400).send('The vote value ' + query.vote + ' is not valid');
+    }
+}
+
+async function getUser({ query }, res, next) {
     let userId = await getUserIdByToken(query.token);
     User.findById(userId).then(user => {
         res.status(200).send(user.redactedJson());
@@ -187,7 +250,7 @@ async function signInUser(req, res, next) {
         if (generateSaltedPassword(req.body.password, user.salt) === user.password) {
             // Create JWT
             let userId = user._id.toString();
-            const jwToken = jwt.sign({"username": userId}, TOKEN_SECRET, {expiresIn: '1800s'})
+            const jwToken = jwt.sign({ "username": userId }, TOKEN_SECRET, { expiresIn: '1800s' })
             res.status(200).send(jwToken);
         } else {
             console.log("User " + req.body.username + " failed password authentication.")
@@ -200,16 +263,16 @@ async function signInUser(req, res, next) {
     });
 }
 
-async function getComment({query, body},res,next) {
+async function getComment({ query, body }, res, next) {
     if (!query || !(query.parent_id)) {
-            Comment.find().then(comments => {
-                res.send(comments)
-            }).catch(err => {
-                logAndSendError(res, err)
-                next(err)
-            });
+        Comment.find().then(comments => {
+            res.send(comments)
+        }).catch(err => {
+            logAndSendError(res, err)
+            next(err)
+        });
     } else {
-        Comment.find({'parent_id':query.parent_id}).then(comment => {
+        Comment.find({ 'parent_id': query.parent_id }).then(comment => {
             res.send(comment);
         }).catch(err => {
             logAndSendError(res, err)
@@ -218,13 +281,13 @@ async function getComment({query, body},res,next) {
     }
 }
 
-async function saveComment({query, body},res,next) {
+async function saveComment({ query, body }, res, next) {
     let creator = await getUserIdByToken(query.token);
     const cmt = new Comment({
-        cmt: body.cmt, liked: false, parent_id : body.parent_id
+        cmt: body.cmt, liked: false, parent_id: body.parent_id
     })
     if (creator == null) {
-        console.log("Cannot save note without a valid creator"+ "\n" + cmt)
+        console.log("Cannot save note without a valid creator" + "\n" + cmt)
         logAndSendError(res, err)
     } else {
         cmt.creator = creator
@@ -237,8 +300,8 @@ async function saveComment({query, body},res,next) {
                     return;
                 }
                 console.log(oldNote)
-                Note.updateOne({'_id': body.parent_id}, {
-                    'comments':oldNote['comments'] + 1
+                Note.updateOne({ '_id': body.parent_id }, {
+                    'comments': oldNote['comments'] + 1
                 }).then(_ => {
                     res.sendStatus(200);
                 }).catch(err => {
@@ -250,11 +313,11 @@ async function saveComment({query, body},res,next) {
 
         }).catch(err => {
             logAndSendError(res, err)
-    });
+        });
 }
 
 
-async function updateComment({query, body},res,next) {
+async function updateComment({ query, body }, res, next) {
     const commentId = body.cmtID || query.cmtID;
     if (!commentId) {
         logAndSendError(res, "send comment id")
@@ -265,7 +328,7 @@ async function updateComment({query, body},res,next) {
         logAndSendError(res, "Comment id does not exist")
         return;
     }
-    Comment.updateOne({'_id': commentId}, {
+    Comment.updateOne({ '_id': commentId }, {
         'cmt': body.cmt || oldComment['cmt']
     }).then(_ => {
         res.status(200).send(oldComment);
@@ -275,14 +338,14 @@ async function updateComment({query, body},res,next) {
     })
 }
 
-async function delComment({query, body},res,next) {
+async function delComment({ query, body }, res, next) {
     // Delete all notes if note id is not provided
-    if (query && query.cmtId || body && body.cmtId ) {
-        Comment.deleteOne({'_id': query.cmtId||body.cmtId}).then(res.status(200).send(query.cmtId||body.cmtId)).catch(err=>{
-            logAndSendError(res,"Comment Id does not exist \n"+ err)
+    if (query && query.cmtId || body && body.cmtId) {
+        Comment.deleteOne({ '_id': query.cmtId || body.cmtId }).then(res.status(200).send(query.cmtId || body.cmtId)).catch(err => {
+            logAndSendError(res, "Comment Id does not exist \n" + err)
         })
     } else {
-        logAndSendError(res,"Invaild Comment Id")
+        logAndSendError(res, "Invaild Comment Id")
     }
 }
 
@@ -300,9 +363,9 @@ function signUpUser(req, res, next) {
         .then(_ => {
             return (signInUser(req, res, next))
         }).catch(err => {
-        console.log(err)
-        next(err)
-    });
+            console.log(err)
+            next(err)
+        });
 }
 
 async function getUserIdByToken(token) {
