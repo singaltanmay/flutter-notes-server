@@ -51,6 +51,10 @@ app.get('/user', getUser)
 app.post('/signup', signUpUser)
 app.post('/signin', signInUser)
 app.get('/health', (_, res) => res.send(mongooseConnected))
+app.get('/cmt', getComment)
+app.post('/cmt', saveComment)
+app.put('/cmt', updateComment)
+app.delete('/cmt', delComment)
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {
@@ -71,6 +75,7 @@ app.use(function (err, req, res, next) {
 // Schema imports
 const Note = require('./schema/Note')
 const User = require('./schema/User')
+const Comment = require('./schema/Comment')
 
 async function getNote({query}, res, next) {
     // Return all notes if note id is not provided
@@ -195,6 +200,92 @@ async function signInUser(req, res, next) {
     });
 }
 
+async function getComment({query, body},res,next) {
+    if (!query || !(query.parent_id)) {
+            Comment.find().then(comments => {
+                res.send(comments)
+            }).catch(err => {
+                logAndSendError(res, err)
+                next(err)
+            });
+    } else {
+        Comment.find({'parent_id':query.parent_id}).then(comment => {
+            res.send(comment);
+        }).catch(err => {
+            logAndSendError(res, err)
+            next(err)
+        })
+    }
+}
+
+async function saveComment({query, body},res,next) {
+    let creator = await getUserIdByToken(query.token);
+    const cmt = new Comment({
+        cmt: body.cmt, liked: false, parent_id : body.parent_id
+    })
+    if (creator == null) {
+        console.log("Cannot save note without a valid creator"+ "\n" + cmt)
+        logAndSendError(res, err)
+    } else {
+        cmt.creator = creator
+    }
+    cmt.save()
+        .then(_ => {
+            Note.findById(body.parent_id).then(oldNote => {
+                if (oldNote == null) {
+                    res.sendStatus(404)
+                    return;
+                }
+                console.log(oldNote)
+                Note.updateOne({'_id': body.parent_id}, {
+                    'comments':oldNote['comments'] + 1
+                }).then(_ => {
+                    res.sendStatus(200);
+                }).catch(err => {
+                    logAndSendError(res, err)
+                })
+            }).catch(err => {
+                logAndSendError(res, err)
+            });
+
+        }).catch(err => {
+            logAndSendError(res, err)
+    });
+}
+
+
+async function updateComment({query, body},res,next) {
+    const commentId = body.cmtID || query.cmtID;
+    if (!commentId) {
+        logAndSendError(res, "send comment id")
+        return;
+    }
+    const oldComment = await Comment.findById(commentId);
+    if (oldComment == null) {
+        logAndSendError(res, "Comment id does not exist")
+        return;
+    }
+    Comment.updateOne({'_id': commentId}, {
+        'cmt': body.cmt || oldComment['cmt']
+    }).then(_ => {
+        res.status(200).send(oldComment);
+    }).catch(err => {
+        console.log(err)
+        next(err)
+    })
+}
+
+async function delComment({query, body},res,next) {
+    // Delete all notes if note id is not provided
+    if (query && query.cmtId || body && body.cmtId ) {
+        Comment.deleteOne({'_id': query.cmtId||body.cmtId}).then(res.status(200).send(query.cmtId||body.cmtId)).catch(err=>{
+            logAndSendError(res,"Comment Id does not exist \n"+ err)
+        })
+    } else {
+        logAndSendError(res,"Invaild Comment Id")
+    }
+}
+
 function signUpUser(req, res, next) {
     const salt = saltmine();
     const saltedPassword = generateSaltedPassword(req.body.password, salt);
@@ -230,13 +321,18 @@ async function getUserIdByToken(token) {
 // Returns a random 16 digit string to be used as salt
 function saltmine() {
     return crypto.randomBytes(8).toString('hex').slice(0, 16);
-};
+}
 
 // Create a salted password
 function generateSaltedPassword(password, salt) {
     let hmac = crypto.createHmac('sha512', salt);
     let update = hmac.update(password);
     return update.digest('hex');
+}
+
+function logAndSendError(res, err) {
+    console.log(err)
+    res.status(404).send(err)
 }
 
 module.exports = app;
