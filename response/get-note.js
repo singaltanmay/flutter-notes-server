@@ -1,4 +1,4 @@
-function getNoteByToken({noteObj, creatorObj, requesterId}) {
+function getNote({noteObj, creatorObj, requesterId}) {
     let requesterVoted = 0;
     if (requesterId && noteObj.upvoters.includes(requesterId)) {
         requesterVoted = 1;
@@ -20,4 +20,4 @@ function getNoteByToken({noteObj, creatorObj, requesterId}) {
     }
 }
 
-module.exports = getNoteByToken
+module.exports = getNote

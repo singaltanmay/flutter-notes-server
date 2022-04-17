@@ -79,35 +79,39 @@ const User = require('./schema/User')
 const Comment = require('./schema/Comment')
 
 // Response Helper imports
-const getNoteByTokenResponse = require('./response/get-note-by-token')
+const getNoteResponse = require('./response/get-note')
 
 async function getNote({query}, res, next) {
+    let requesterId = await getUserIdByToken(query.token);
     // Return all notes if note id is not provided
     if (!query || !(query.noteid)) {
-        Note.find().then(notes => {
-            res.send(notes)
-        }).catch(err => {
-            console.log(err)
-            next(err)
-        });
+        let allNoteObjs = await Note.find();
+        if (allNoteObjs == null) {
+            res.sendStatus(404);
+            return;
+        }
+        const responseJsonList = []
+        for (i = 0; i < allNoteObjs.length; i++) {
+            const noteObj = allNoteObjs[i];
+            let creatorObj = await User.findById(noteObj.creator);
+            let responseJson = getNoteResponse({
+                'noteObj': noteObj, 'creatorObj': creatorObj, 'requesterId': requesterId
+            });
+            responseJsonList.push(responseJson)
+        }
+        res.status(200).send(responseJsonList);
     } else {
-        getNoteById(query, res, next)
+        let noteObj = await Note.findById(query.noteid);
+        if (noteObj == null) {
+            res.sendStatus(404);
+            return;
+        }
+        let creatorObj = await User.findById(noteObj.creator);
+        let responseJson = getNoteResponse({
+            'noteObj': noteObj, 'creatorObj': creatorObj, 'requesterId': requesterId
+        });
+        res.status(200).send(responseJson);
     }
-}
-
-async function getNoteById(query, res, next) {
-    let requesterId = await getUserIdByToken(query.token);
-    let noteObj = await Note.findById(query.noteid);
-    if (noteObj == null) {
-        res.sendStatus(404);
-        return;
-    }
-    let creatorObj = await User.findById(noteObj.creator);
-    // TODO testing method to create customer response json for client
-    let responseJson = getNoteByTokenResponse({
-        'noteObj': noteObj, 'creatorObj': creatorObj, 'requesterId': requesterId
-    });
-    res.status(200).send(responseJson);
 }
 
 async function getStarredNotes(req, res, next) {
