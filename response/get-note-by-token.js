@@ -1,25 +1,22 @@
-// final String? id;
-// final String title;
-// final String body;
-// final bool starred;
-// String? created = DateTime.now().toString();
-// final String creator;
-// List<String>? upvoters;
-// List<String>? downvoters;
-// List<Comment>? comments;
-
-function getNoteByToken({note, creatorUsername, numberOfUpvotes, numberOfDownvotes, numberOfComments}) {
+function getNoteByToken({noteObj, creatorObj, requesterId}) {
+    let requesterVoted = 0;
+    if (requesterId && noteObj.upvoters.includes(requesterId)) {
+        requesterVoted = 1;
+    } else if (noteObj.downvoters.includes(requesterId)) {
+        requesterVoted = -1;
+    }
     return {
-        "_id": note._id,
-        "title": note.title,
-        "body": note.body,
-        "created": note.created,
-        "starred": note.starred,
-        "creator": note.creator,
-        "creatorUsername": creatorUsername,
-        "numberOfUpvotes": numberOfUpvotes,
-        "numberOfDownvotes": numberOfDownvotes,
-        "numberOfComments": numberOfComments
+        "_id": noteObj._id.toString(),
+        "title": noteObj.title,
+        "body": noteObj.body,
+        "created": noteObj.created,
+        "starred": noteObj.starred,
+        "creator": noteObj.creator.toString(),
+        "creatorUsername": creatorObj.username,
+        "numberOfUpvotes": noteObj.upvoters.length,
+        "numberOfDownvotes": noteObj.downvoters.length,
+        "numberOfComments": noteObj.comments.length,
+        "requesterVoted": requesterVoted
     }
 }
 

@@ -81,11 +81,6 @@ const Comment = require('./schema/Comment')
 // Response Helper imports
 const getNoteByTokenResponse = require('./response/get-note-by-token')
 
-// TODO testing method to create customer response json for client
-console.log(getNoteByTokenResponse({
-    'note': {}, 'creatorUsername': null, 'numberOfUpvotes': 2, 'numberOfDownvotes': 5, 'numberOfComments': 7
-}));
-
 async function getNote({query}, res, next) {
     // Return all notes if note id is not provided
     if (!query || !(query.noteid)) {
@@ -96,14 +91,23 @@ async function getNote({query}, res, next) {
             next(err)
         });
     } else {
-        Note.findById(query.noteid).then(note => {
-            res.status(200).send(note);
-        }).catch(err => {
-            console.log(err)
-            res.sendStatus(404)
-            next(err)
-        })
+        getNoteById(query, res, next)
     }
+}
+
+async function getNoteById(query, res, next) {
+    let requesterId = await getUserIdByToken(query.token);
+    let noteObj = await Note.findById(query.noteid);
+    if (noteObj == null) {
+        res.sendStatus(404);
+        return;
+    }
+    let creatorObj = await User.findById(noteObj.creator);
+    // TODO testing method to create customer response json for client
+    let responseJson = getNoteByTokenResponse({
+        'noteObj': noteObj, 'creatorObj': creatorObj, 'requesterId': requesterId
+    });
+    res.status(200).send(responseJson);
 }
 
 async function getStarredNotes(req, res, next) {
