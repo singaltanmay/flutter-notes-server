@@ -12,9 +12,7 @@ const noteSchema = new mongoose.Schema({
         type: Boolean, default: false
     }, upvoters: [mongoose.Schema.Types.ObjectId],
     downvoters: [mongoose.Schema.Types.ObjectId],
-    comments: {
-        type: Number, default: 0
-    }
+    comments: [mongoose.Schema.Types.ObjectId]
 })
 
 module.exports = mongoose.model('Note', noteSchema);
