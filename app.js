@@ -79,30 +79,38 @@ const User = require('./schema/User')
 const Comment = require('./schema/Comment')
 
 // Response Helper imports
-const getNoteByTokenResponse = require('./response/get-note-by-token')
-
-// TODO testing method to create customer response json for client
-console.log(getNoteByTokenResponse({
-    'note': {}, 'creatorUsername': null, 'numberOfUpvotes': 2, 'numberOfDownvotes': 5, 'numberOfComments': 7
-}));
+const getNoteResponse = require('./response/get-note')
 
 async function getNote({query}, res, next) {
+    let requesterId = await getUserIdByToken(query.token);
     // Return all notes if note id is not provided
     if (!query || !(query.noteid)) {
-        Note.find().then(notes => {
-            res.send(notes)
-        }).catch(err => {
-            console.log(err)
-            next(err)
-        });
+        let allNoteObjs = await Note.find();
+        if (allNoteObjs == null) {
+            res.sendStatus(404);
+            return;
+        }
+        const responseJsonList = []
+        for (i = 0; i < allNoteObjs.length; i++) {
+            const noteObj = allNoteObjs[i];
+            let creatorObj = await User.findById(noteObj.creator);
+            let responseJson = getNoteResponse({
+                'noteObj': noteObj, 'creatorObj': creatorObj, 'requesterId': requesterId
+            });
+            responseJsonList.push(responseJson)
+        }
+        res.status(200).send(responseJsonList);
     } else {
-        Note.findById(query.noteid).then(note => {
-            res.status(200).send(note);
-        }).catch(err => {
-            console.log(err)
-            res.sendStatus(404)
-            next(err)
-        })
+        let noteObj = await Note.findById(query.noteid);
+        if (noteObj == null) {
+            res.sendStatus(404);
+            return;
+        }
+        let creatorObj = await User.findById(noteObj.creator);
+        let responseJson = getNoteResponse({
+            'noteObj': noteObj, 'creatorObj': creatorObj, 'requesterId': requesterId
+        });
+        res.status(200).send(responseJson);
     }
 }
 
