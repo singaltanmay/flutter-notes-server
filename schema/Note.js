@@ -3,14 +3,18 @@ const mongoose = require('mongoose');
 const noteSchema = new mongoose.Schema({
     title: {
         type: String, required: true
-    }, body: String,
+    },
+    body: String,
     created: {
         type: Date, default: Date.now
-    }, creator: {
+    },
+    creator: {
         type: mongoose.Schema.Types.ObjectId, ref: 'creator', required: true
-    }, starred: {
+    },
+    starred: {
         type: Boolean, default: false
-    }, upvoters: [mongoose.Schema.Types.ObjectId],
+    },
+    upvoters: [mongoose.Schema.Types.ObjectId],
     downvoters: [mongoose.Schema.Types.ObjectId],
     comments: [mongoose.Schema.Types.ObjectId]
 })
