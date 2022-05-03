@@ -4,6 +4,9 @@ const commentSchema = new mongoose.Schema({
     body: {
         type: String, required: true
     },
+    created: {
+        type: Date, default: Date.now
+    },
     creator: {
         type: mongoose.Schema.Types.ObjectId, ref: 'creator', required: true
     },
