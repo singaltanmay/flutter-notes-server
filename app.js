@@ -48,14 +48,16 @@ app.post('/note', saveNote)
 app.delete('/note', deleteNote)
 app.put('/note', updateNote)
 app.post('/note/:noteId/vote', voteOnNote)
+app.get('/note/:noteId/comments', getCommentsFromNoteId)
+app.post('/note/:noteId/comment', saveCommentFromNoteId)
+app.get('/comment', getComment)
+app.post('/comment', saveComment)
+app.put('/comment', updateComment)
+app.delete('/comment', delComment)
 app.get('/user', getUser)
 app.post('/signup', signUpUser)
 app.post('/signin', signInUser)
 app.get('/health', (_, res) => res.send(mongooseConnected))
-app.get('/cmt', getComment)
-app.post('/cmt', saveComment)
-app.put('/cmt', updateComment)
-app.delete('/cmt', delComment)
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {
@@ -76,10 +78,11 @@ app.use(function (err, req, res, next) {
 // Schema imports
 const Note = require('./schema/Note')
 const User = require('./schema/User')
-const Comment = require('./schema/Comment')
+const Comment = require('./schema/NoteComment')
 
 // Response Helper imports
 const getNoteResponse = require('./response/get-note')
+const getCommentResponse = require('./response/get-comment')
 
 async function getNote({query}, res, next) {
     let requesterId = await getUserIdByToken(query.token);
@@ -143,6 +146,7 @@ async function saveNote({query, body}, res, next) {
             res.sendStatus(200);
         }).catch(err => {
         next(err)
+        return;
     });
 }
 
@@ -191,20 +195,20 @@ async function voteOnNote({params, query}, res, next) {
         res.status(400).send('Note ID and Vote value should be provided!');
         return;
     }
-    let userId = await getUserIdByToken(query.token);
-    let note = await Note.findById(params.noteId);
-    if (!note) {
+    let requesterId = await getUserIdByToken(query.token);
+    let noteObj = await Note.findById(params.noteId);
+    if (!noteObj) {
         res.status(404).send('Note with note ID ' + params.noteId + ' not found.');
         return;
     }
     if (query.vote == -1) {
         // Case: Downvote
         // Remove any upvote by this user
-        note.upvoters = note.upvoters.filter((value) => value != userId);
+        noteObj.upvoters = noteObj.upvoters.filter((value) => value != requesterId);
         // Add the downvote
-        note.downvoters = note.downvoters.push(userId);
-        Note.updateOne({'_id': note._id}, {
-            'upvoters': note.upvoters, 'downvoters': note.downvoters
+        noteObj.downvoters = noteObj.downvoters.push(requesterId);
+        Note.updateOne({'_id': noteObj._id}, {
+            'upvoters': noteObj.upvoters, 'downvoters': noteObj.downvoters
         }).then(_ => {
             res.sendStatus(200);
         }).catch(err => {
@@ -214,11 +218,11 @@ async function voteOnNote({params, query}, res, next) {
     } else if (query.vote == 0) {
         // Case: No Vote
         // Remove any upvote by this user
-        note.upvoters = note.upvoters.filter((value) => value != userId);
+        noteObj.upvoters = noteObj.upvoters.filter((value) => value != requesterId);
         // Remove any downvote by this user
-        note.downvoters = note.downvoters.filter((value) => value != userId);
-        Note.updateOne({'_id': note._id}, {
-            'upvoters': note.upvoters, 'downvoters': note.downvoters
+        noteObj.downvoters = noteObj.downvoters.filter((value) => value != requesterId);
+        Note.updateOne({'_id': noteObj._id}, {
+            'upvoters': noteObj.upvoters, 'downvoters': noteObj.downvoters
         }).then(_ => {
             res.sendStatus(200);
         }).catch(err => {
@@ -228,11 +232,11 @@ async function voteOnNote({params, query}, res, next) {
     } else if (query.vote == 1) {
         // Case: Upvote
         // Remove any downvote by this user
-        note.downvoters = note.downvoters.filter((value) => value != userId);
+        noteObj.downvoters = noteObj.downvoters.filter((value) => value != requesterId);
         // Add the upvote
-        note.upvoters = note.upvoters.push(userId);
-        Note.updateOne({'_id': note._id}, {
-            'upvoters': note.upvoters, 'downvoters': note.downvoters
+        noteObj.upvoters = noteObj.upvoters.push(requesterId);
+        Note.updateOne({'_id': noteObj._id}, {
+            'upvoters': noteObj.upvoters, 'downvoters': noteObj.downvoters
         }).then(_ => {
             res.sendStatus(200);
         }).catch(err => {
@@ -276,16 +280,86 @@ async function signInUser(req, res, next) {
     });
 }
 
+async function getCommentsFromNoteId({params, query}, res, next) {
+    // Request did not specify the note ID
+    if (!params || !(params.noteId)) {
+        res.status(400).send('Note ID should be provided!');
+        return;
+    }
+    let requesterId = await getUserIdByToken(query.token);
+    let noteObj = await Note.findById(params.noteId);
+    if (!noteObj) {
+        res.status(404).send('Note with note ID ' + params.noteId + ' not found.');
+        return;
+    }
+    const commentQueryJson = query && query.parentComment ? {
+        'parentNote': params.noteId, 'parentComment': query.parentComment
+    } : {'parentNote': params.noteId};
+    var allCommentObjs = await Comment.find(commentQueryJson);
+    const responseJsonList = [];
+    for (i = 0; i < allCommentObjs.length; i++) {
+        const commentObj = allCommentObjs[i];
+        let creatorObj = await User.findById(commentObj.creator);
+        let responseJson = getCommentResponse({
+            'commentObj': commentObj, 'creatorObj': creatorObj, 'requesterId': requesterId
+        });
+        responseJsonList.push(responseJson)
+    }
+    res.status(200).send(responseJsonList);
+}
+
+async function saveCommentFromNoteId({query, params, body}, res, next) {
+    // Request did not specify the note ID
+    if (!params || !(params.noteId)) {
+        res.status(400).send('Note ID should be provided!');
+        return;
+    }
+    let requesterId = await getUserIdByToken(query.token);
+    let noteObj = await Note.findById(params.noteId);
+    if (!noteObj) {
+        res.status(404).send('Note with note ID ' + params.noteId + ' not found.');
+        return;
+    }
+    const comment = new Comment({
+        body: body.body, created: body.created, parentNote: params.noteId
+    })
+    let parentCommentId = body.parentComment;
+    let parentCommentObj = await Comment.findById(body.parentComment);
+    if (parentCommentId && !parentCommentObj) {
+        res.status(404).send('Comment with comment ID ' + parentCommentId + ' not found.');
+        return;
+    } else comment.parentComment = parentCommentId;
+    if (requesterId == null) {
+        let errorMsg = "Cannot save comment without a valid creator";
+        console.log(errorMsg + "\n" + comment)
+        res.status(400).send(errorMsg);
+        next()
+    } else {
+        comment.creator = requesterId
+    }
+    comment.save()
+        .then(newCommentObj => {
+            if (parentCommentObj) {
+                parentCommentObj.nestedComments.push(newCommentObj._id)
+                Comment.findOneAndUpdate({'_id': parentCommentId}, parentCommentObj)
+            }
+            res.sendStatus(200);
+        }).catch(err => {
+        next(err)
+        return;
+    });
+}
+
 async function getComment({query, body}, res, next) {
-    if (!query || !(query.parent_id)) {
+    if (!query || !(query.id)) {
         Comment.find().then(comments => {
             res.send(comments)
         }).catch(err => {
             logAndSendError(res, err)
-            next(err)
+            return;
         });
     } else {
-        Comment.find({'parent_id': query.parent_id}).then(comment => {
+        Comment.findById(query.id).then(comment => {
             res.send(comment);
         }).catch(err => {
             logAndSendError(res, err)
@@ -296,39 +370,62 @@ async function getComment({query, body}, res, next) {
 
 async function saveComment({query, body}, res, next) {
     let creator = await getUserIdByToken(query.token);
-    const cmt = new Comment({
-        cmt: body.cmt, liked: false, parent_id: body.parent_id
-    })
     if (creator == null) {
-        console.log("Cannot save note without a valid creator" + "\n" + cmt)
+        console.log("Cannot save note without a valid creator" + "\n" + commentObj)
         logAndSendError(res, err)
-    } else {
-        cmt.creator = creator
+        return;
     }
-    cmt.save()
-        .then(_ => {
-            Note.findById(body.parent_id).then(oldNote => {
-                if (oldNote == null) {
-                    res.sendStatus(404)
-                    return;
-                }
-                console.log(oldNote)
-                Note.updateOne({'_id': body.parent_id}, {
-                    'comments': oldNote['comments'] + 1
-                }).then(_ => {
-                    res.sendStatus(200);
-                }).catch(err => {
-                    logAndSendError(res, err)
-                })
-            }).catch(err => {
-                logAndSendError(res, err)
-            });
-
-        }).catch(err => {
+    let parentNoteId = body.parentNote;
+    var noteObj = await Note.findById(parentNoteId);
+    if (!noteObj) {
+        console.log("Parent Note ID is invalid. Cannot save comment. Please provide a valid parent note ID.")
         logAndSendError(res, err)
+        return;
+    }
+    let parentCommentId = body.parentComment;
+    var parentCommentObj = null;
+    if (parentCommentId && !parentCommentId.isEmpty()) {
+        parentCommentObj = await Comment.findById(parentCommentId);
+        if (!parentCommentObj) {
+            console.log("Parent Comment ID is invalid. Cannot save comment.")
+            logAndSendError(res, err)
+            return;
+        }
+    }
+    const commentObj = new Comment({
+        body: body.body, creator: creator, parentNote: parentNoteId, parentComment: parentCommentId
+    })
+    commentObj.save().then(_ => {
+        res.sendStatus(200);
+        return;
+    }).catch(err => {
+        logAndSendError(res, err);
+        return;
     });
-}
 
+    // commentObj.save()
+    //     .then(_ => {
+    //         Note.findById(body.parent_id).then(oldNote => {
+    //             if (oldNote == null) {
+    //                 res.sendStatus(404)
+    //                 return;
+    //             }
+    //             console.log(oldNote)
+    //             Note.updateOne({'_id': body.parent_id}, {
+    //                 'comments': oldNote['comments'] + 1
+    //             }).then(_ => {
+    //                 res.sendStatus(200);
+    //             }).catch(err => {
+    //                 logAndSendError(res, err)
+    //             })
+    //         }).catch(err => {
+    //             logAndSendError(res, err)
+    //         });
+    //
+    //     }).catch(err => {
+    //     logAndSendError(res, err)
+    // });
+}
 
 async function updateComment({query, body}, res, next) {
     const commentId = body.cmtID || query.cmtID;
