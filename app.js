@@ -330,8 +330,8 @@ async function saveCommentFromNoteId({query, params, body}, res, next) {
         return;
     } else comment.parentComment = parentCommentId;
     if (requesterId == null) {
-        let errorMsg = "Cannot save note without a valid creator";
-        console.log(errorMsg + "\n" + note)
+        let errorMsg = "Cannot save comment without a valid creator";
+        console.log(errorMsg + "\n" + comment)
         res.status(400).send(errorMsg);
         next()
     } else {
@@ -339,8 +339,10 @@ async function saveCommentFromNoteId({query, params, body}, res, next) {
     }
     comment.save()
         .then(newCommentObj => {
-            parentCommentObj.nestedComments.push(newCommentObj._id)
-            Comment.findOneAndUpdate({'_id': parentCommentId}, parentCommentObj)
+            if (parentCommentObj) {
+                parentCommentObj.nestedComments.push(newCommentObj._id)
+                Comment.findOneAndUpdate({'_id': parentCommentId}, parentCommentObj)
+            }
             res.sendStatus(200);
         }).catch(err => {
         next(err)
