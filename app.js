@@ -403,48 +403,30 @@ async function saveComment({query, body}, res, next) {
         return;
     });
 
-    // commentObj.save()
-    //     .then(_ => {
-    //         Note.findById(body.parent_id).then(oldNote => {
-    //             if (oldNote == null) {
-    //                 res.sendStatus(404)
-    //                 return;
-    //             }
-    //             console.log(oldNote)
-    //             Note.updateOne({'_id': body.parent_id}, {
-    //                 'comments': oldNote['comments'] + 1
-    //             }).then(_ => {
-    //                 res.sendStatus(200);
-    //             }).catch(err => {
-    //                 logAndSendError(res, err)
-    //             })
-    //         }).catch(err => {
-    //             logAndSendError(res, err)
-    //         });
-    //
-    //     }).catch(err => {
-    //     logAndSendError(res, err)
-    // });
 }
 
 async function updateComment({query, body}, res, next) {
-    const commentId = body.cmtID || query.cmtID;
+    let creator = await getUserIdByToken(query.token);
+    if (creator == null) {
+        console.log("Valid user token not provided")
+        logAndSendError(res, err)
+        return;
+    }
+    const commentId = body.id || query.id;
     if (!commentId) {
-        logAndSendError(res, "send comment id")
+        logAndSendError(res, "No Comment ID provided")
         return;
     }
     const oldComment = await Comment.findById(commentId);
     if (oldComment == null) {
-        logAndSendError(res, "Comment id does not exist")
+        logAndSendError(res, "Invalid Comment ID")
         return;
     }
-    Comment.updateOne({'_id': commentId}, {
-        'cmt': body.cmt || oldComment['cmt']
-    }).then(_ => {
-        res.status(200).send(oldComment);
+    Comment.updateOne({'_id': commentId}, {body: body.body || oldComment.body}).then(_ => {
+        res.sendStatus(200);
     }).catch(err => {
-        console.log(err)
-        next(err)
+        logAndSendError(res, err);
+        return;
     })
 }
 
